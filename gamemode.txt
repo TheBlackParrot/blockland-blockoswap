@@ -1,0 +1,63 @@
+//add-ons to load
+ADDON Brick_Large_Cubes
+ADDON Emote_Alarm
+ADDON Emote_Confusion
+ADDON Emote_Hate
+ADDON Emote_Love
+ADDON Particle_Basic
+ADDON Particle_FX_Cans
+ADDON Particle_Player
+ADDON Particle_Tools
+
+ADDON Gamemode_Blockoswap
+
+ADDON Print_Letters_Continuum
+
+//environment
+$EnvGuiServer::SimpleMode 1
+$EnvGuiServer::SkyFile Add-Ons/Sky_Greylands/Greylands.dml
+$EnvGuiServer::WaterFile NONE
+$EnvGuiServer::GroundFile Add-Ons/Ground_Plate/plate.ground
+
+
+//minigame rules
+$MiniGame::Enabled 0
+$MiniGame::GameColor 0
+$MiniGame::InviteOnly 0
+$MiniGame::IncludeAllPlayersBricks 1
+$MiniGame::PlayersUseOwnBricks 0
+
+$MiniGame::Points_BreakBrick 0
+$MiniGame::Points_PlantBrick 0
+$MiniGame::Points_KillPlayer 0
+$MiniGame::Points_KillSelf 0
+$MiniGame::Points_Die 0
+   
+$MiniGame::RespawnTime 0
+$MiniGame::VehicleRespawnTime 20
+$MiniGame::BrickRespawnTime 5
+
+$MiniGame::UseSpawnBricks 0
+$MiniGame::FallingDamage 0
+$MiniGame::WeaponDamage 1
+$MiniGame::SelfDamage 1
+$MiniGame::VehicleDamage 0
+$MiniGame::BrickDamage 0
+$MiniGame::EnableWand 0
+$MiniGame::EnableBuilding 0
+$MiniGame::EnablePainting 1
+
+$MiniGame::BotDamage 0
+$MiniGame::BotRespawnTime 15
+$MiniGame::Points_KillBot 0
+
+$MiniGame::PlayerDataBlockName Crumbling Arena Player
+
+$MiniGame::StartEquipName0 0
+$MiniGame::StartEquipName1 0 
+$MiniGame::StartEquipName2 0
+$MiniGame::StartEquipName3 0
+$MiniGame::StartEquipName4 0
+
+//config settings
+$Server::WelcomeMessage \c2Welcome to Blockland, %1.
