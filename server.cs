@@ -3,31 +3,31 @@ exec("./sounds.cs");
 exec("./shapes.cs");
 
 $GLOBAL_DELAY = 300;
-
 $PRINT_NUM_START = 35;
+$SLOT_SPACING = 25;
 
 // !! very unreadable code ahead !! sorry
 
-function shuffleBoard() {
+function shuffleBoard(%client) {
 	for(%x = 0; %x < 8; %x++) {
 		for(%y = 0; %y < 8; %y++) {
 			%keepGoing = 1;
 			while(%keepGoing) {
 				%color = getRandom(0, 6);
-				if(getFieldCount(checkMatches(%x, %y, %color)) < 2) {
+				if(getFieldCount(checkMatches(%x, %y, %color, %client)) < 2) {
 					%keepGoing = false;
 				}
 			}
 
-			$Server::Blockoswap::Px[%x, %y] = %color;
-			if(isObject($Server::Blockoswap::Brick[%x, %y])) {
-				$Server::Blockoswap::Brick[%x, %y].changePiece(%color);
+			$Server::Blockoswap::Px[%x, %y, %client] = %color;
+			if(isObject($Server::Blockoswap::Brick[%x, %y, %client])) {
+				$Server::Blockoswap::Brick[%x, %y, %client].changePiece(%color);
 			}
 		}
 	}
 }
 
-function scoreEmitter(%x, %y, %score) {
+function scoreEmitter(%x, %y, %score, %client) {
 	for(%i = 0; %i < strLen(%score); %i++) {
 		%c = getSubStr(%score, %i, 1);
 
@@ -53,18 +53,28 @@ function scoreEmitter(%x, %y, %score) {
 function SimGroup::initBoard(%this) {
 	%offset = "0 0 0.6";
 	%brickType = "brick1x1Data";
+	%client = %this.client;
 
-	shuffleBoard();
+	shuffleBoard(%client);
+
+	for(%slot = 0; %slot < 99; %slot++) {
+		if($Server::Blockoswap::Slot[%slot] $= "") {
+			break;
+		}
+	}
+
+	%client.slot = %slot;
+	$Server::Blockoswap::Slot[%slot] = 1;
 
 	for(%x = 0; %x < 8; %x++) {
 		for(%y = 0; %y < 8; %y++) {
-			%pos = %x * (%brickType.brickSizeX/2) SPC 0 SPC %y * (%brickType.brickSizeZ/5);
-			$Server::Blockoswap::Brick[%x, %y] = %brick = new fxDTSBrick() {
+			%pos = %x * (%brickType.brickSizeX/2) + (%slot * $SLOT_SPACING) SPC 0 SPC %y * (%brickType.brickSizeZ/5);
+			$Server::Blockoswap::Brick[%x, %y, %client] = %brick = new fxDTSBrick() {
 				angleID = 0;
-				client = %this.client;
+				client = %client;
 				colorFxID = 0;
-				colorID = $Server::Blockoswap::Px[%x, %y];
-				dataBlock = getJewelDatablockFromColor($Server::Blockoswap::Px[%x, %y]);
+				colorID = $Server::Blockoswap::Px[%x, %y, %client];
+				dataBlock = getJewelDatablockFromColor($Server::Blockoswap::Px[%x, %y, %client]);
 				position = vectorAdd(%pos, %offset);
 				rotation = "0 0 1 90";
 				scale = "1 1 1";
@@ -85,13 +95,13 @@ function SimGroup::initBoard(%this) {
 	}
 
 	for(%x = 0; %x < 6; %x++) {
-		$Server::Blockoswap::ScoreBrick[%x] = %brick = new fxDTSBrick() {
+		$Server::Blockoswap::ScoreBrick[%x, %client] = %brick = new fxDTSBrick() {
 			angleID = 0;
-			client = -1;
+			client = %client;
 			colorFxID = 0;
 			colorID = 7;
 			dataBlock = "brick1x1PrintData";
-			position = vectorAdd("-0.75 0.25 4.3", -0.5 * %x SPC 0 SPC 0);
+			position = vectorAdd("-0.75 0.25 4.3", -0.5 * %x + (%slot * $SLOT_SPACING) SPC 0 SPC 0);
 			rotation = "1 0 0 0";
 			scale = "1 1 1";
 			shapeFxID = 0;
@@ -113,13 +123,13 @@ function SimGroup::initBoard(%this) {
 			case 5: %pID = 14;
 			default: %pID = 36;
 		}
-		$Server::Blockoswap::LevelBrick[%x] = %brick = new fxDTSBrick() {
+		$Server::Blockoswap::LevelBrick[%x, %client] = %brick = new fxDTSBrick() {
 			angleID = 0;
-			client = -1;
+			client = %client;
 			colorFxID = 0;
 			colorID = 8;
 			dataBlock = "brick1x1PrintData";
-			position = vectorAdd("-0.75 0.25 3.7", -0.5 * %x SPC 0 SPC 0);
+			position = vectorAdd("-0.75 0.25 3.7", -0.5 * %x + (%slot * $SLOT_SPACING) SPC 0 SPC 0);
 			rotation = "1 0 0 0";
 			scale = "1 1 1";
 			shapeFxID = 0;
@@ -139,7 +149,7 @@ function SimGroup::initBoard(%this) {
 	}
 	%this.levelCompletionShape = new StaticShape(BlockoswapLevelCompletion) {
 		dataBlock = CubeShape;
-		position = "0.25 0.033 0.2";
+		position = 0.25 + (%slot * $SLOT_SPACING) SPC "0.033 0.2";
 		scale = 0 SPC 0.1 SPC 0.15;
 	};
 
@@ -152,18 +162,18 @@ function SimGroup::initBoard(%this) {
 
 function SimGroup::setLevelProgress(%this, %perc) {
 	%this.levelCompletionShape.setScale((%perc/100) * 8 SPC 0.1 SPC 0.15);
-	%this.levelCompletionShape.setTransform((%perc/100) * 2 SPC 0.033 SPC 0.2);
+	%this.levelCompletionShape.setTransform((%perc/100) * 2 + (%this.client.slot * $SLOT_SPACING) SPC 0.033 SPC 0.2);
 }
 
-function checkMatches(%x, %y, %color) {
-	%matchesX = checkBoardInDirection(%x, %y, 1, 0, %color);
+function checkMatches(%x, %y, %color, %client) {
+	%matchesX = checkBoardInDirection(%x, %y, 1, 0, %color, %client);
 	//talk("mX:" SPC strReplace(%matchesX, "\t", ", "));
-	%matchesX = trim(%matchesX TAB checkBoardInDirection(%x, %y, -1, 0, %color));
+	%matchesX = trim(%matchesX TAB checkBoardInDirection(%x, %y, -1, 0, %color, %client));
 	//talk("mX:" SPC strReplace(%matchesX, "\t", ", "));
 
-	%matchesY = checkBoardInDirection(%x, %y, 0, 1, %color);
+	%matchesY = checkBoardInDirection(%x, %y, 0, 1, %color, %client);
 	//talk("mY:" SPC strReplace(%matchesY, "\t", ", "));
-	%matchesY = trim(%matchesY TAB checkBoardInDirection(%x, %y, 0, -1, %color));
+	%matchesY = trim(%matchesY TAB checkBoardInDirection(%x, %y, 0, -1, %color, %client));
 	//talk("mY:" SPC strReplace(%matchesY, "\t", ", "));
 
 	if(getFieldCount(%matchesX) >= 2) {
@@ -176,14 +186,14 @@ function checkMatches(%x, %y, %color) {
 	return %matches;
 }
 
-function checkBoardInDirection(%x, %y, %xDir, %yDir, %color) {
+function checkBoardInDirection(%x, %y, %xDir, %yDir, %color, %client) {
 	%keepGoing = 1;
 
 	while(%keepGoing) {
 		%x += %xDir;
 		%y += %yDir;
 
-		%checking = $Server::Blockoswap::Px[%x, %y];
+		%checking = $Server::Blockoswap::Px[%x, %y, %client];
 
 		if(%x < 0 || %y < 0 || %x >= 8 || %y >= 8 || %color != %checking) {
 			%keepGoing = 0;
@@ -195,9 +205,14 @@ function checkBoardInDirection(%x, %y, %xDir, %yDir, %color) {
 	return %matches;
 }
 
-function serverCmdTestBoard(%client) {
-	%client.brickgroup.chainDeleteCallback = "BrickGroup_999999.initBoard();";
-	%client.brickgroup.chainDeleteAll();
+//function serverCmdTestBoard(%client) {
+//	%client.brickgroup.chainDeleteCallback = "BrickGroup_999999.initBoard();";
+//	%client.brickgroup.chainDeleteAll();
+//}
+
+function serverCmdGame(%client) {
+	%client.brickgroup.chainDeleteCallback = %client.brickgroup.getName() @ ".initBoard();";
+	%client.endGame();
 }
 
 function fxDTSBrick::setActive(%this, %client, %tog) {
@@ -239,15 +254,15 @@ function getJewelDatablockFromColor(%color) {
 }
 
 function fxDTSBrick::changePiece(%this, %color) {
-	$Server::Blockoswap::Px[%this.x, %this.y] = %color;
+	$Server::Blockoswap::Px[%this.x, %this.y, %this.client] = %color;
 	%this.setColor(%color);
 
-	$Server::Blockoswap::Brick[%this.x, %this.y] = new fxDTSBrick() {
+	$Server::Blockoswap::Brick[%this.x, %this.y, %this.client] = new fxDTSBrick() {
 		angleID = 0;
 		client = %this.client;
 		colorFxID = 0;
-		colorID = $Server::Blockoswap::Px[%this.x, %this.y];
-		dataBlock = getJewelDatablockFromColor($Server::Blockoswap::Px[%this.x, %this.y]);
+		colorID = $Server::Blockoswap::Px[%this.x, %this.y, %this.client];
+		dataBlock = getJewelDatablockFromColor($Server::Blockoswap::Px[%this.x, %this.y, %this.client]);
 		position = %this.getPosition();
 		rotation = "0 0 1 90";
 		scale = "1 1 1";
@@ -264,7 +279,7 @@ function fxDTSBrick::changePiece(%this, %color) {
 
 	%x = %this.x;
 	%y = %this.y;
-	schedule(1, 0, plantNewBrick, $Server::Blockoswap::Brick[%x, %y]);
+	schedule(1, 0, plantNewBrick, $Server::Blockoswap::Brick[%x, %y, %this.client]);
 
 	%this.delete();
 }
@@ -274,18 +289,18 @@ function plantNewBrick(%brick) {
 		// the fuck?
 		return;
 	}
-	%brick.client.brickgroup.add($Server::Blockoswap::Brick[%brick.x, %brick.y]);
-	$Server::Blockoswap::Brick[%brick.x, %brick.y].setTrusted(1);
-	$Server::Blockoswap::Brick[%brick.x, %brick.y].plant();	
+	%brick.client.brickgroup.add(%brick);
+	%brick.setTrusted(1);
+	%brick.plant();	
 }
 
 function swapPieces(%wantedBrick, %originBrick, %client) {
 	%x1 = %originBrick.x;
 	%y1 = %originBrick.y;
-	%c1 = $Server::Blockoswap::Px[%x1, %y1];
+	%c1 = $Server::Blockoswap::Px[%x1, %y1, %client];
 	%x2 = %wantedBrick.x;
 	%y2 = %wantedBrick.y;
-	%c2 = $Server::Blockoswap::Px[%x2, %y2];
+	%c2 = $Server::Blockoswap::Px[%x2, %y2, %client];
 
 	%wantedBrick.changePiece(%c1);
 	%originBrick.changePiece(%c2);
@@ -324,7 +339,7 @@ function GameConnection::animateScore(%client) {
 
 		for(%i = 0; %i < strLen(%client.score); %i++) {
 			%c = getSubStr(%client.score, strLen(%client.score)-%i-1, 1);
-			$Server::Blockoswap::ScoreBrick[%i].setPrint($PRINT_NUM_START - %c);
+			$Server::Blockoswap::ScoreBrick[%i, %client].setPrint($PRINT_NUM_START - %c);
 		}
 
 		return;
@@ -334,7 +349,7 @@ function GameConnection::animateScore(%client) {
 
 	for(%i = 0; %i < strLen(%at); %i++) {
 		%c = getSubStr(%at, strLen(%at)-%i-1, 1);
-		$Server::Blockoswap::ScoreBrick[%i].setPrint($PRINT_NUM_START - %c);
+		$Server::Blockoswap::ScoreBrick[%i, %client].setPrint($PRINT_NUM_START - %c);
 	}
 }
 
@@ -343,31 +358,31 @@ function GameConnection::nextLevel(%client) {
 	%client.level++;
 	%client.brickgroup.setLevelProgress(0);
 	%client.moveToNextLevel = 0;
-	shuffleBoard();
+	shuffleBoard(%client);
 
 	%client.play2D(levelComplete);
 	%client.schedule(750, play2D, levelCompleteVoice);
 
 	for(%i = 0; %i < strLen(%client.level); %i++) {
 		%c = getSubStr(%client.level, %i, 1);
-		$Server::Blockoswap::LevelBrick[%i].setPrint($PRINT_NUM_START - %c);
+		$Server::Blockoswap::LevelBrick[%i, %client].setPrint($PRINT_NUM_START - %c);
 	}
 
 	for(%i = 0; %i < 6; %i++) {
-		$Server::Blockoswap::LevelBrick[%i].setColorFX(3);
-		$Server::Blockoswap::LevelBrick[%i].schedule(250, setColorFX, 0);
-		$Server::Blockoswap::LevelBrick[%i].schedule(500, setColorFX, 3);
-		$Server::Blockoswap::LevelBrick[%i].schedule(750, setColorFX, 0);
-		$Server::Blockoswap::LevelBrick[%i].schedule(1000, setColorFX, 3);
-		$Server::Blockoswap::LevelBrick[%i].schedule(1250, setColorFX, 0);
+		$Server::Blockoswap::LevelBrick[%i, %client].setColorFX(3);
+		$Server::Blockoswap::LevelBrick[%i, %client].schedule(250, setColorFX, 0);
+		$Server::Blockoswap::LevelBrick[%i, %client].schedule(500, setColorFX, 3);
+		$Server::Blockoswap::LevelBrick[%i, %client].schedule(750, setColorFX, 0);
+		$Server::Blockoswap::LevelBrick[%i, %client].schedule(1000, setColorFX, 3);
+		$Server::Blockoswap::LevelBrick[%i, %client].schedule(1250, setColorFX, 0);
 	}
 }
 
 function postSwap(%x1, %y1, %c1, %x2, %y2, %c2, %client) {
-	%matchesWanted = trim(%x2 SPC %y2 TAB checkMatches(%x2, %y2, %c1));
-	talk("matchesWanted:" SPC strReplace(%matchesWanted, "\t", ", "));
-	%matchesOrigin = trim(%x1 SPC %y1 TAB checkMatches(%x1, %y1, %c2));
-	talk("matchesOrigin:" SPC strReplace(%matchesOrigin, "\t", ", "));
+	%matchesWanted = trim(%x2 SPC %y2 TAB checkMatches(%x2, %y2, %c1, %client));
+	//talk("matchesWanted:" SPC strReplace(%matchesWanted, "\t", ", "));
+	%matchesOrigin = trim(%x1 SPC %y1 TAB checkMatches(%x1, %y1, %c2, %client));
+	//talk("matchesOrigin:" SPC strReplace(%matchesOrigin, "\t", ", "));
 
 	if(getFieldCount(%matchesWanted) > 2) {
 		%matches = %matchesWanted;
@@ -377,7 +392,7 @@ function postSwap(%x1, %y1, %c1, %x2, %y2, %c2, %client) {
 	}
 
 	if(getFieldCount(%matches) > 2) {
-		talk("match found with length of" SPC getFieldCount(%matches) @ ":" SPC strReplace(%matches, "\t",  ", "));
+		//talk("match found with length of" SPC getFieldCount(%matches) @ ":" SPC strReplace(%matches, "\t",  ", "));
 		if(getFieldCount(%matches) > 3) {
 			%client.play2D(doubleMatchFound);
 		} else {
@@ -396,9 +411,9 @@ function postSwap(%x1, %y1, %c1, %x2, %y2, %c2, %client) {
 			%mX = getWord(%match, 0);
 			%mY = getWord(%match, 1);
 
-			$Server::Blockoswap::Brick[%mX, %mY].setToFall = 1;
+			$Server::Blockoswap::Brick[%mX, %mY, %client].setToFall = 1;
 
-			%bpos = $Server::Blockoswap::Brick[%mX, %mY].getPosition();
+			%bpos = $Server::Blockoswap::Brick[%mX, %mY, %client].getPosition();
 			%bX = getWord(%bpos, 0);
 			%bY = getWord(%bpos, 2);
 
@@ -410,20 +425,20 @@ function postSwap(%x1, %y1, %c1, %x2, %y2, %c2, %client) {
 
 		makeBoardFall("", 0, %client);
 
-		talk(%lowX SPC %lowY SPC %highX SPC %highY);
+		//talk(%lowX SPC %lowY SPC %highX SPC %highY);
 
-		scoreEmitter((%lowX + %highX)/2, (%lowY + %highY)/2, %scoreToAdd);
+		scoreEmitter((%lowX + %highX)/2, (%lowY + %highY)/2, %scoreToAdd, %client);
 	} else {
-		talk("no matches");
+		//talk("no matches");
 		%client.play2D(swapBad);
-		schedule($GLOBAL_DELAY, 0, swapFailed, %x1, %y1, %c1, %x2, %y2, %c2);
+		schedule($GLOBAL_DELAY, 0, swapFailed, %x1, %y1, %c1, %x2, %y2, %c2, %client);
 		%client.finishMoving();
 	}
 }
 
-function swapFailed(%x1, %y1, %c1, %x2, %y2, %c2) {
-	$Server::Blockoswap::Brick[%x1, %y1].changePiece(%c1);
-	$Server::Blockoswap::Brick[%x2, %y2].changePiece(%c2);
+function swapFailed(%x1, %y1, %c1, %x2, %y2, %c2, %client) {
+	$Server::Blockoswap::Brick[%x1, %y1, %client].changePiece(%c1);
+	$Server::Blockoswap::Brick[%x2, %y2, %client].changePiece(%c2);
 }
 
 function makeBoardFall(%skipChecks, %cc, %client) {
@@ -431,7 +446,7 @@ function makeBoardFall(%skipChecks, %cc, %client) {
 	if(%skipChecks $= "") {
 		for(%x = 0; %x < 8; %x++) {
 			for(%y = 0; %y < 8; %y++) {
-				%brick = $Server::Blockoswap::Brick[%x, %y];
+				%brick = $Server::Blockoswap::Brick[%x, %y, %client];
 
 				if(!%brick.setToFall) {
 					continue;
@@ -449,13 +464,13 @@ function makeBoardFall(%skipChecks, %cc, %client) {
 		}
 	}
 
-	talk("falling");
+	//talk("falling");
 	%nextStep = true;
 
 	for(%x = 0; %x < 8; %x++) {
 		for(%y = 0; %y < 8; %y++) {
-			%brick = $Server::Blockoswap::Brick[%x, %y];
-			%nextBrick = $Server::Blockoswap::Brick[%x, %y-1];
+			%brick = $Server::Blockoswap::Brick[%x, %y, %client];
+			%nextBrick = $Server::Blockoswap::Brick[%x, %y-1, %client];
 
 			if(%y == 0) {
 				continue;
@@ -468,8 +483,8 @@ function makeBoardFall(%skipChecks, %cc, %client) {
 				%nextBrick.setToFall = false;
 
 				for(%z = %y; %z < 8; %z++) {
-					%temp_b = $Server::Blockoswap::Brick[%x, %z];
-					%temp_b_up = $Server::Blockoswap::Brick[%x, %z+1];
+					%temp_b = $Server::Blockoswap::Brick[%x, %z, %client];
+					%temp_b_up = $Server::Blockoswap::Brick[%x, %z+1, %client];
 
 					if(%z >= 7) {
 						%temp_b.changePiece(getRandom(0, 6));
@@ -497,7 +512,7 @@ function makeBoardFall(%skipChecks, %cc, %client) {
 
 function checkBoardForCombos(%cc, %client) {
 	cancel($Server::Blockoswap::ComboSched);
-	talk("checking for combos");
+	//talk("checking for combos");
 	%fall = false;
 
 	%highX = -999999;
@@ -506,22 +521,22 @@ function checkBoardForCombos(%cc, %client) {
 	%lowY = 999999;
 	for(%x = 0; %x < 8; %x++) {
 		for(%y = 0; %y < 8; %y++) {
-			%brick = $Server::Blockoswap::Brick[%x, %y];
-			%matches = trim(%x SPC %y TAB checkMatches(%x, %y, %brick.colorID));
+			%brick = $Server::Blockoswap::Brick[%x, %y, %client];
+			%matches = trim(%x SPC %y TAB checkMatches(%x, %y, %brick.colorID, %client));
 			if(getFieldCount(%matches) > 2) {
 				for(%i = 0; %i < getFieldCount(%matches); %i++) {
 					%match = getField(%matches, %i);
 					%mX = getWord(%match, 0);
 					%mY = getWord(%match, 1);
 
-					$Server::Blockoswap::Brick[%mX, %mY].setToFall = 1;
+					$Server::Blockoswap::Brick[%mX, %mY, %client].setToFall = 1;
 
 					if(%uniqueMatch[%mX, %mY] $= "") {
 						%uniqueMatch[%mX, %mY] = 1;
 						%uniqueMatches = trim(%uniqueMatches TAB %mX SPC %mY);
 					}
 
-					%bpos = $Server::Blockoswap::Brick[%mX, %mY].getPosition();
+					%bpos = $Server::Blockoswap::Brick[%mX, %mY, %client].getPosition();
 					%bX = getWord(%bpos, 0);
 					%bY = getWord(%bpos, 2);
 
@@ -539,12 +554,12 @@ function checkBoardForCombos(%cc, %client) {
 	}
 
 	if(%fall) {
-		talk("FALLING" SPC %cc SPC getFieldCount(%uniqueMatches));
+		//talk("FALLING" SPC %cc SPC getFieldCount(%uniqueMatches));
 		makeBoardFall("", %cc, %client);
 
 		%scoreToAdd = ((10 + (5 * (getFieldCount(%uniqueMatches) - 3))) + (5 * (%client.level - 1))) * (%cc+1);
 		%client.incrScore(%scoreToAdd);
-		scoreEmitter((%lowX + %highX)/2, (%lowY + %highY)/2, %scoreToAdd);
+		scoreEmitter((%lowX + %highX)/2, (%lowY + %highY)/2, %scoreToAdd, %client);
 
 		if(%cc > 6) {
 			%client.play2D(combo6);
@@ -556,75 +571,67 @@ function checkBoardForCombos(%cc, %client) {
 	}
 }
 
-function GameConnection::finishMoving(%client) {
-	if(%client.moveToNextLevel) {
-		%client.nextLevel();
-	}
-
-	%client.canMove = 1;
-
-	%dirs = "0 1\t0 -1\t1 0\t-1 0";
-
+function checkForMoves(%client) {
 	%matchFound = false;
 	for(%x = 0; %x < 8; %x++) {
 		for(%y = 0; %y < 8; %y++) {
-			$Server::Blockoswap::Brick[%x, %y].setToFall = 0;
+			$Server::Blockoswap::Brick[%x, %y, %client].setToFall = 0;
 
-			%t1 = $Server::Blockoswap::Px[%x, %y];
-			%t2 = $Server::Blockoswap::Px[%x+1, %y];
+			%t1 = $Server::Blockoswap::Px[%x, %y, %client];
+			%t2 = $Server::Blockoswap::Px[%x+1, %y, %client];
 			if(%t2 !$= "") {
-				$Server::Blockoswap::Px[%x, %y] = %t2;
-				$Server::Blockoswap::Px[%x+1, %y] = %t1;
-				%matches = trim(%x SPC %y TAB checkMatches(%x, %y, $Server::Blockoswap::Px[%x, %y]));
-				$Server::Blockoswap::Px[%x, %y] = %t1;
-				$Server::Blockoswap::Px[%x+1, %y] = %t2;
+				$Server::Blockoswap::Px[%x, %y, %client] = %t2;
+				$Server::Blockoswap::Px[%x+1, %y, %client] = %t1;
+				%matches = trim(%x SPC %y TAB checkMatches(%x, %y, $Server::Blockoswap::Px[%x, %y, %client], %client));
+				$Server::Blockoswap::Px[%x, %y, %client] = %t1;
+				$Server::Blockoswap::Px[%x+1, %y, %client] = %t2;
 				if(getFieldCount(%matches) > 2) {
-					talk("potential match (x+1) found at" SPC %x SPC %y SPC "--" SPC %matches);
+					//talk("potential match (x+1) found at" SPC %x SPC %y SPC "--" SPC %matches);
 					%matchFound = 1;
 					break;
 				}
 			}
 
-			%t1 = $Server::Blockoswap::Px[%x, %y];
-			%t2 = $Server::Blockoswap::Px[%x-1, %y];
+			%t1 = $Server::Blockoswap::Px[%x, %y, %client];
+			%t2 = $Server::Blockoswap::Px[%x-1, %y, %client];
 			if(%t2 !$= "") {
-				$Server::Blockoswap::Px[%x, %y] = %t2;
-				$Server::Blockoswap::Px[%x-1, %y] = %t1;
-				%matches = trim(%x SPC %y TAB checkMatches(%x, %y, $Server::Blockoswap::Px[%x, %y]));
-				$Server::Blockoswap::Px[%x, %y] = %t1;
-				$Server::Blockoswap::Px[%x-1, %y] = %t2;
+				$Server::Blockoswap::Px[%x, %y, %client] = %t2;
+				$Server::Blockoswap::Px[%x-1, %y, %client] = %t1;
+				%matches = trim(%x SPC %y TAB checkMatches(%x, %y, $Server::Blockoswap::Px[%x, %y, %client], %client));
+				$Server::Blockoswap::Px[%x, %y, %client] = %t1;
+				$Server::Blockoswap::Px[%x-1, %y, %client] = %t2;
 				if(getFieldCount(%matches) > 2) {
-					talk("potential match (x-1) found at" SPC %x SPC %y SPC "--" SPC %matches);
+					//talk("potential match (x-1) found at" SPC %x SPC %y SPC "--" SPC %matches);
 					%matchFound = 1;
 					break;
 				}
 			}
 
-			%t1 = $Server::Blockoswap::Px[%x, %y];
-			%t2 = $Server::Blockoswap::Px[%x, %y+1];
+			%t1 = $Server::Blockoswap::Px[%x, %y, %client];
+			%t2 = $Server::Blockoswap::Px[%x, %y+1, %client];
 			if(%t2 !$= "") {
-				$Server::Blockoswap::Px[%x, %y] = %t2;
-				$Server::Blockoswap::Px[%x, %y+1] = %t1;
-				%matches = trim(%x SPC %y TAB checkMatches(%x, %y, $Server::Blockoswap::Px[%x, %y]));
-				$Server::Blockoswap::Px[%x, %y] = %t1;
-				$Server::Blockoswap::Px[%x, %y+1] = %t2;
+				$Server::Blockoswap::Px[%x, %y, %client] = %t2;
+				$Server::Blockoswap::Px[%x, %y+1, %client] = %t1;
+				%matches = trim(%x SPC %y TAB checkMatches(%x, %y, $Server::Blockoswap::Px[%x, %y, %client], %client));
+				$Server::Blockoswap::Px[%x, %y, %client] = %t1;
+				$Server::Blockoswap::Px[%x, %y+1, %client] = %t2;
 				if(getFieldCount(%matches) > 2) {
-					talk("potential match (y+1) found at" SPC %x SPC %y SPC "--" SPC %matches);
+					//talk("potential match (y+1) found at" SPC %x SPC %y SPC "--" SPC %matches);
 					%matchFound = 1;
 					break;
 				}
 			}
 
-			%t1 = $Server::Blockoswap::Px[%x, %y];
-			%t2 = $Server::Blockoswap::Px[%x, %y-1];
+			%t1 = $Server::Blockoswap::Px[%x, %y, %client];
+			%t2 = $Server::Blockoswap::Px[%x, %y-1, %client];
 			if(%t2 !$= "") {
-				$Server::Blockoswap::Px[%x, %y] = %t2;
-				$Server::Blockoswap::Px[%x, %y-1] = %t1;
-				%matches = trim(%x SPC %y TAB checkMatches(%x, %y, $Server::Blockoswap::Px[%x, %y]));
-				$Server::Blockoswap::Px[%x, %y] = %t1;
-				$Server::Blockoswap::Px[%x, %y-1] = %t2;
+				$Server::Blockoswap::Px[%x, %y, %client] = %t2;
+				$Server::Blockoswap::Px[%x, %y-1, %client] = %t1;
+				%matches = trim(%x SPC %y TAB checkMatches(%x, %y, $Server::Blockoswap::Px[%x, %y, %client], %client));
+				$Server::Blockoswap::Px[%x, %y, %client] = %t1;
+				$Server::Blockoswap::Px[%x, %y-1, %client] = %t2;
 				if(getFieldCount(%matches) > 2) {
-					talk("potential match (y-1) found at" SPC %x SPC %y SPC "--" SPC %matches);
+					//talk("potential match (y-1) found at" SPC %x SPC %y SPC "--" SPC %matches);
 					%matchFound = 1;
 					break;
 				}
@@ -635,6 +642,17 @@ function GameConnection::finishMoving(%client) {
 		}
 	}
 
+	return %matchFound;
+}
+
+function GameConnection::finishMoving(%client) {
+	if(%client.moveToNextLevel) {
+		%client.nextLevel();
+	}
+
+	%client.canMove = 1;
+	%matchFound = checkForMoves(%client);
+
 	if(!%matchFound) {
 		%client.canMove = 0;
 		%client.play2D(noMoreMoves);
@@ -642,11 +660,21 @@ function GameConnection::finishMoving(%client) {
 	}
 }
 
+function GameConnection::endGame(%this) {
+	$Server::Blockoswap::Slot[%this.slot] = "";
+	%this.slot = "";
+	%this.brickgroup.chainDeleteAll();
+}
+
 package BlockoswapPackage {
 	function fxDTSBrick::onActivate(%this, %player, %client, %c, %d) {
 		%r = parent::onActivate(%this, %player, %client, %c, %d);
 
 		if(%this.x $= "") {
+			return %r;
+		}
+
+		if(%this.client != %client) {
 			return %r;
 		}
 
@@ -660,7 +688,7 @@ package BlockoswapPackage {
 
 				switch$(%dir) {
 					case "0 -1" or "0 1" or "-1 0" or "1 0":
-						%brickInQuestion = $Server::Blockoswap::Brick[%client.activeX, %client.activeY];
+						%brickInQuestion = $Server::Blockoswap::Brick[%client.activeX, %client.activeY, %client];
 						%this.setActive(%client, 0);
 						%brickInQuestion.setActive(%client, 0);
 
