@@ -21,9 +21,32 @@ function shuffleBoard() {
 
 			$Server::Blockoswap::Px[%x, %y] = %color;
 			if(isObject($Server::Blockoswap::Brick[%x, %y])) {
-				$Server::Blockoswap::Brick[%x, %y].setColor(%color);
+				$Server::Blockoswap::Brick[%x, %y].changePiece(%color);
 			}
 		}
+	}
+}
+
+function scoreEmitter(%x, %y, %score) {
+	for(%i = 0; %i < strLen(%score); %i++) {
+		%c = getSubStr(%score, %i, 1);
+
+		%pos = %x + (%i * 0.35) - (strLen(%score)/2*0.175) SPC -0.3 SPC %y-0.1;
+
+		%emitter = new ParticleEmitterNode() {
+			dataBlock = "GenericEmitterNode";
+			emitter = "score" @ %c @ "Emitter";
+			pointPlacement = 0;
+			position = %pos;
+			rotation = "1 0 0 0";
+			scale = "0.05 0.05 0.05";
+			spherePlacement = 0;
+			velocity = "1";
+		};
+
+		MissionCleanup.add(%emitter);
+
+		%emitter.schedule(150, delete);
 	}
 }
 
@@ -38,10 +61,10 @@ function SimGroup::initBoard(%this) {
 			%pos = %x * (%brickType.brickSizeX/2) SPC 0 SPC %y * (%brickType.brickSizeZ/5);
 			$Server::Blockoswap::Brick[%x, %y] = %brick = new fxDTSBrick() {
 				angleID = 0;
-				client = -1;
+				client = %this.client;
 				colorFxID = 0;
 				colorID = $Server::Blockoswap::Px[%x, %y];
-				dataBlock = "brick1x1Data";
+				dataBlock = getJewelDatablockFromColor($Server::Blockoswap::Px[%x, %y]);
 				position = vectorAdd(%pos, %offset);
 				rotation = "0 0 1 90";
 				scale = "1 1 1";
@@ -196,9 +219,64 @@ function fxDTSBrick::setActive(%this, %client, %tog) {
 	}
 }
 
+function getJewelDatablockFromColor(%color) {
+	if(%color == 63) {
+		return "brick1x1Data".getID();
+	}
+
+	%ret = "red";
+
+	switch(%color) {
+		case 1: %ret = "orange";
+		case 2: %ret = "yellow";
+		case 3: %ret = "green";
+		case 4: %ret = "blue";
+		case 5: %ret = "pink";
+		case 6: %ret = "white";
+	}
+
+	return (%ret @ "JewelData").getID();
+}
+
 function fxDTSBrick::changePiece(%this, %color) {
 	$Server::Blockoswap::Px[%this.x, %this.y] = %color;
 	%this.setColor(%color);
+
+	$Server::Blockoswap::Brick[%this.x, %this.y] = new fxDTSBrick() {
+		angleID = 0;
+		client = %this.client;
+		colorFxID = 0;
+		colorID = $Server::Blockoswap::Px[%this.x, %this.y];
+		dataBlock = getJewelDatablockFromColor($Server::Blockoswap::Px[%this.x, %this.y]);
+		position = %this.getPosition();
+		rotation = "0 0 1 90";
+		scale = "1 1 1";
+		shapeFxID = 0;
+		stackBL_ID = -1;
+		isBasePlate = 0;
+		isPlanted = 1;
+		printID = 0;
+		x = %this.x;
+		y = %this.y;
+		active = 0;
+	};
+	//talk($Server::Blockoswap::Brick[%this.x, %this.y]);
+
+	%x = %this.x;
+	%y = %this.y;
+	schedule(1, 0, plantNewBrick, $Server::Blockoswap::Brick[%x, %y]);
+
+	%this.delete();
+}
+
+function plantNewBrick(%brick) {
+	if(!isObject(%brick)) {
+		// the fuck?
+		return;
+	}
+	%brick.client.brickgroup.add($Server::Blockoswap::Brick[%brick.x, %brick.y]);
+	$Server::Blockoswap::Brick[%brick.x, %brick.y].setTrusted(1);
+	$Server::Blockoswap::Brick[%brick.x, %brick.y].plant();	
 }
 
 function swapPieces(%wantedBrick, %originBrick, %client) {
@@ -306,17 +384,35 @@ function postSwap(%x1, %y1, %c1, %x2, %y2, %c2, %client) {
 			%client.play2D(matchFound);
 		}
 
-		%client.incrScore((10 + (5 * (getFieldCount(%matches) - 3))) + (5 * (%client.level - 1)));
+		%scoreToAdd = (10 + (5 * (getFieldCount(%matches) - 3))) + (5 * (%client.level - 1));
+		%client.incrScore(%scoreToAdd);
 
+		%highX = -999999;
+		%highY = -999999;
+		%lowX = 999999;
+		%lowY = 999999;
 		for(%i = 0; %i < getFieldCount(%matches); %i++) {
 			%match = getField(%matches, %i);
 			%mX = getWord(%match, 0);
 			%mY = getWord(%match, 1);
 
 			$Server::Blockoswap::Brick[%mX, %mY].setToFall = 1;
+
+			%bpos = $Server::Blockoswap::Brick[%mX, %mY].getPosition();
+			%bX = getWord(%bpos, 0);
+			%bY = getWord(%bpos, 2);
+
+			if(%bX > %highX) { %highX = %bX; }
+			if(%bY > %highY) { %highY = %bY; }
+			if(%bX < %lowX) { %lowX = %bX; }
+			if(%bY < %lowY) { %lowY = %bY; }
 		}
 
 		makeBoardFall("", 0, %client);
+
+		talk(%lowX SPC %lowY SPC %highX SPC %highY);
+
+		scoreEmitter((%lowX + %highX)/2, (%lowY + %highY)/2, %scoreToAdd);
 	} else {
 		talk("no matches");
 		%client.play2D(swapBad);
@@ -361,7 +457,7 @@ function makeBoardFall(%skipChecks, %cc, %client) {
 			%brick = $Server::Blockoswap::Brick[%x, %y];
 			%nextBrick = $Server::Blockoswap::Brick[%x, %y-1];
 
-			if(!isObject(%nextBrick)) {
+			if(%y == 0) {
 				continue;
 			}
 
@@ -375,7 +471,7 @@ function makeBoardFall(%skipChecks, %cc, %client) {
 					%temp_b = $Server::Blockoswap::Brick[%x, %z];
 					%temp_b_up = $Server::Blockoswap::Brick[%x, %z+1];
 
-					if(!isObject(%temp_b_up)) {
+					if(%z >= 7) {
 						%temp_b.changePiece(getRandom(0, 6));
 					} else {
 						%temp_b.changePiece(%temp_b_up.colorID);
@@ -404,9 +500,11 @@ function checkBoardForCombos(%cc, %client) {
 	talk("checking for combos");
 	%fall = false;
 
-	%highX = -1;
+	%highX = -999999;
+	%lowX = 999999;
+	%highY = -999999;
+	%lowY = 999999;
 	for(%x = 0; %x < 8; %x++) {
-		%highY = -1;
 		for(%y = 0; %y < 8; %y++) {
 			%brick = $Server::Blockoswap::Brick[%x, %y];
 			%matches = trim(%x SPC %y TAB checkMatches(%x, %y, %brick.colorID));
@@ -418,8 +516,19 @@ function checkBoardForCombos(%cc, %client) {
 
 					$Server::Blockoswap::Brick[%mX, %mY].setToFall = 1;
 
-					if(%mX > %highX) { %highX = %x = %mX; }
-					if(%mY > %highY) { %highY = %y = %mY; }
+					if(%uniqueMatch[%mX, %mY] $= "") {
+						%uniqueMatch[%mX, %mY] = 1;
+						%uniqueMatches = trim(%uniqueMatches TAB %mX SPC %mY);
+					}
+
+					%bpos = $Server::Blockoswap::Brick[%mX, %mY].getPosition();
+					%bX = getWord(%bpos, 0);
+					%bY = getWord(%bpos, 2);
+
+					if(%bX > %highX) { %highX = %bX; }
+					if(%bY > %highY) { %highY = %bY; }
+					if(%bX < %lowX) { %lowX = %bX; }
+					if(%bY < %lowY) { %lowY = %bY; }
 				}
 
 				%allMatches = trim(%allMatches TAB %matches);
@@ -430,10 +539,12 @@ function checkBoardForCombos(%cc, %client) {
 	}
 
 	if(%fall) {
-		talk("FALLING" SPC %cc);
+		talk("FALLING" SPC %cc SPC getFieldCount(%uniqueMatches));
 		makeBoardFall("", %cc, %client);
 
-		%client.incrScore((10 + (5 * (getFieldCount(%allMatches) - 3))) + (5 * (%client.level - 1)) * %cc);
+		%scoreToAdd = ((10 + (5 * (getFieldCount(%uniqueMatches) - 3))) + (5 * (%client.level - 1))) * (%cc+1);
+		%client.incrScore(%scoreToAdd);
+		scoreEmitter((%lowX + %highX)/2, (%lowY + %highY)/2, %scoreToAdd);
 
 		if(%cc > 6) {
 			%client.play2D(combo6);
