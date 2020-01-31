@@ -1,6 +1,7 @@
 //exec("./changelog.cs");
 exec("./sounds.cs");
 exec("./shapes.cs");
+//exec("./leaderboard.cs");
 
 $GLOBAL_DELAY = 300;
 $PRINT_NUM_START = 35;
@@ -158,6 +159,10 @@ function SimGroup::initBoard(%this) {
 	%client.score = 0;
 	%client.scoreInLevel = 0;
 	%client.canMove = 1;
+
+	if(isObject(%client.player)) {
+		%client.player.setTransform(-0.5 * %x + (%slot * $SLOT_SPACING) SPC -1 SPC 1);
+	}
 }
 
 function SimGroup::setLevelProgress(%this, %perc) {
@@ -318,7 +323,7 @@ function GameConnection::incrScore(%client, %amount) {
 	%client.animateScore();
 
 	%maxToProgress = %client.level * 500;
-	if(%client.scoreInLevel > %maxToProgress) {
+	if(%client.scoreInLevel >= %maxToProgress) {
 		%client.scoreInLevel = %maxToProgress;
 		%client.moveToNextLevel = 1;
 	}
@@ -471,30 +476,34 @@ function makeBoardFall(%skipChecks, %cc, %client) {
 		for(%y = 0; %y < 8; %y++) {
 			%brick = $Server::Blockoswap::Brick[%x, %y, %client];
 			%nextBrick = $Server::Blockoswap::Brick[%x, %y-1, %client];
+			%px = $Server::Blockoswap::Px[%x, %y, %client];
+			%nextPx = $Server::Blockoswap::Px[%x, %y-1, %client];
 
 			if(%y == 0) {
 				continue;
 			}
 
-			if(%nextBrick.colorID == 63) {
+			if(%nextPx == 63) {
 				%nextStep = false;
-				%nextBrick.changePiece(%brick.colorID);
+				%nextBrick.changePiece(%px);
 				%brick.setToFall = false;
 				%nextBrick.setToFall = false;
 
 				for(%z = %y; %z < 8; %z++) {
 					%temp_b = $Server::Blockoswap::Brick[%x, %z, %client];
 					%temp_b_up = $Server::Blockoswap::Brick[%x, %z+1, %client];
+					%temp_px = $Server::Blockoswap::Px[%x, %z, %client];
+					%temp_px_up = $Server::Blockoswap::Px[%x, %z+1, %client];
 
 					if(%z >= 7) {
 						%temp_b.changePiece(getRandom(0, 6));
 					} else {
-						%temp_b.changePiece(%temp_b_up.colorID);
+						%temp_b.changePiece(%temp_px_up);
 					}
 				}
 
 				schedule($GLOBAL_DELAY, 0, makeBoardFall, 1, %cc, %client);
-			} else if(%y == 7 && %brick.colorID == 63) {
+			} else if(%y == 7 && %px == 63) {
 				%nextStep = false;
 				%brick.changePiece(getRandom(0, 6));
 				%brick.setToFall = false;
@@ -505,13 +514,13 @@ function makeBoardFall(%skipChecks, %cc, %client) {
 		}
 	}
 
-	if(%nextStep && !isEventPending($Server::Blockoswap::ComboSched)) {
-		$Server::Blockoswap::ComboSched = schedule($GLOBAL_DELAY, 0, checkBoardForCombos, %cc++, %client);
+	if(%nextStep && !isEventPending(%client.ComboSched)) {
+		%client.ComboSched = schedule($GLOBAL_DELAY, 0, checkBoardForCombos, %cc++, %client);
 	}
 }
 
 function checkBoardForCombos(%cc, %client) {
-	cancel($Server::Blockoswap::ComboSched);
+	//cancel($Server::Blockoswap::ComboSched);
 	//talk("checking for combos");
 	%fall = false;
 
@@ -522,7 +531,8 @@ function checkBoardForCombos(%cc, %client) {
 	for(%x = 0; %x < 8; %x++) {
 		for(%y = 0; %y < 8; %y++) {
 			%brick = $Server::Blockoswap::Brick[%x, %y, %client];
-			%matches = trim(%x SPC %y TAB checkMatches(%x, %y, %brick.colorID, %client));
+			%px = $Server::Blockoswap::Px[%x, %y, %client];
+			%matches = trim(%x SPC %y TAB checkMatches(%x, %y, %px, %client));
 			if(getFieldCount(%matches) > 2) {
 				for(%i = 0; %i < getFieldCount(%matches); %i++) {
 					%match = getField(%matches, %i);
@@ -561,12 +571,18 @@ function checkBoardForCombos(%cc, %client) {
 		%client.incrScore(%scoreToAdd);
 		scoreEmitter((%lowX + %highX)/2, (%lowY + %highY)/2, %scoreToAdd, %client);
 
-		if(%cc > 6) {
+		if(%cc >= 6) {
 			%client.play2D(combo6);
+			%client.play2D(voiceIncredible);
 		} else {
 			%client.play2D("combo" @ %cc);
+			switch(%cc) {
+				case 4: %client.play2D(voiceGood);
+				case 5: %client.play2D(voiceExcellent);
+			}
 		}
 	} else {
+		//talk(%client.bl_id SPC "finishMoving");
 		%client.finishMoving();
 	}
 }
@@ -650,13 +666,14 @@ function GameConnection::finishMoving(%client) {
 		%client.nextLevel();
 	}
 
-	%client.canMove = 1;
 	%matchFound = checkForMoves(%client);
 
 	if(!%matchFound) {
 		%client.canMove = 0;
 		%client.play2D(noMoreMoves);
 		%client.brickgroup.levelCompletionShape.setNodeColor("ALL", "1 0 0 1");
+	} else {
+		%client.canMove = 1;
 	}
 }
 
@@ -664,6 +681,9 @@ function GameConnection::endGame(%this) {
 	$Server::Blockoswap::Slot[%this.slot] = "";
 	%this.slot = "";
 	%this.brickgroup.chainDeleteAll();
+	if(isObject(%this.brickgroup.levelCompletionShape)) {
+		%this.brickgroup.levelCompletionShape.delete();
+	}
 }
 
 package BlockoswapPackage {
@@ -709,6 +729,11 @@ package BlockoswapPackage {
 		}
 
 		return %r;
+	}
+
+	function GameConnection::onClientLeaveGame(%this) {
+		%this.endGame();
+		return parent::onClientLeaveGame(%this);
 	}
 };
 activatePackage(BlockoswapPackage);

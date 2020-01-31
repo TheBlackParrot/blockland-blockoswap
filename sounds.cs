@@ -56,3 +56,15 @@ datablock AudioProfile(noMoreMoves : swapBad) {
 	fileName = "Add-Ons/Gamemode_Blockoswap/sounds/noMoreMoves.ogg";
 	uiName = "noMoreMoves";
 };
+datablock AudioProfile(voiceExcellent : swapBad) {
+	fileName = "Add-Ons/Gamemode_Blockoswap/sounds/voiceExcellent.ogg";
+	uiName = "voiceExcellent";
+};
+datablock AudioProfile(voiceGood : swapBad) {
+	fileName = "Add-Ons/Gamemode_Blockoswap/sounds/voiceGood.ogg";
+	uiName = "voiceGood";
+};
+datablock AudioProfile(voiceIncredible : swapBad) {
+	fileName = "Add-Ons/Gamemode_Blockoswap/sounds/voiceIncredible.ogg";
+	uiName = "voiceIncredible";
+};
